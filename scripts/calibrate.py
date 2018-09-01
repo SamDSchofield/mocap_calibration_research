@@ -54,7 +54,6 @@ def match_checkerboard_corners(image_coords, object_coords, t_mo_prior, camera_m
     # Need to make sure the checkerboard is the right way round
     error_1 = np.linalg.norm(image_coords[0] - projected_coords[0])
     error_2 = np.linalg.norm(image_coords[0] - projected_coords[-1])
-    print(np.linalg.norm(image_coords[0] - image_coords[-1]))
     if error_2 < error_1:
         projected_coords = projected_coords[::-1]
         object_coords = object_coords[::-1]
@@ -81,6 +80,9 @@ def match_checkerboard_corners(image_coords, object_coords, t_mo_prior, camera_m
 
 def match_markers(image_coords, object_coords, camera_pose_prior, camera_matrix, distortion_coeffs):
     """Return image_coords sorted into the same order as projected_coords."""
+    # assert len(image_coords) == len(object_coords), "Image, object coords not same length. {} != {}".format(
+    #     len(image_coords), len(object_coords))
+
     _, _, rotation, translation, _ = transformations.decompose_matrix(np.linalg.inv(camera_pose_prior))
     rotation = transformations.euler_matrix(*rotation)
     rotation, _ = cv2.Rodrigues(rotation[:3, :3])
@@ -112,7 +114,9 @@ def remove_outliers(calibration_tfs, translation_tolerance=0.1, rotation_toleran
     tolerances = [translation_tolerance] * 3 + [rotation_tolerance] * 3
     estimate_mask = np.all(np.abs(calibration_tfs - estimate) < tolerances, axis=1)
 
-    medians = np.median(calibration_tfs, axis=0)
+    inliers = np.array(calibration_tfs)[estimate_mask]
+
+    medians = np.median(inliers, axis=0)
     median_mask = np.all(np.abs(calibration_tfs - medians) < tolerances, axis=1)
 
     mask = estimate_mask & median_mask
@@ -163,6 +167,10 @@ def calibrate(all_image_coordinates, all_object_coordinates, t_mrs, t_co, camera
     tf_rc_initial = np.mean(tf_rc_inliers, axis=0)
     t_rc_initial = transformations.compose_matrix(translate=tf_rc_initial[:3], angles=np.radians(tf_rc_initial[3:]))
 
+    print("Estimate after first pass:")
+    print(tf_rc_initial)
+    print("Refining estimate...")
+
     # Use the calculated calibration transform to get better optical-frame priors
     t_mo_priors = calculate_t_mos(t_mrs, t_rc_initial, t_co)
 
@@ -180,7 +188,9 @@ def calibrate(all_image_coordinates, all_object_coordinates, t_mrs, t_co, camera
     tf_rc_posteriors, mask = remove_outliers(tf_rc_posteriors)
     tf_rc_posterior = np.mean(tf_rc_posteriors, axis=0)
     t_rc_posterior = transformations.compose_matrix(translate=tf_rc_posterior[:3], angles=np.radians(tf_rc_posterior[3:]))
+    print("Estimate after refining:")
     print(tf_rc_posterior)
+    print("Optimising estimate...")
 
     # Filter outlier frames
     count = len(all_image_coordinates)
@@ -211,8 +221,8 @@ def calibrate(all_image_coordinates, all_object_coordinates, t_mrs, t_co, camera
 def main():
     # is_checkerboard = True
     is_checkerboard = False
-    data = np.load("../data/sideways_board_data.npz")
-    # data = np.load("../data/marker_data.npz")
+    # data = np.load("../data/2_boards.npz")
+    data = np.load("../data/marker_data.npz")
 
     bag_files = data['bag_files']
 
@@ -230,23 +240,18 @@ def main():
 
 
     # Remove data that is missing camera or calibration object markers
-    is_checkerboard = True
     if is_checkerboard:
         filter_mask = create_insufficient_markers_mask(
             camera_marker_counts, calibration_object_marker_counts, 5, 5)
-        mask = [0 if len(row) != 187 else 1 for row in all_image_coordinates]
-        print(mask)
     else:
         filter_mask = create_insufficient_markers_mask(
             camera_marker_counts, calibration_object_marker_counts, 6, 14)
-    is_checkerboard = False
 
     camera_rb_poses = camera_rb_poses[filter_mask]
     all_image_coordinates = all_image_coordinates[filter_mask]
     all_object_coordinates = all_object_coordinates[filter_mask]
 
-
-    result = calibrate(all_image_coordinates, all_object_coordinates, camera_rb_poses, t_co, camera_matrix, distortion_coeffs, is_checkerboard=is_checkerboard)
+    result = calibrate(all_image_coordinates, all_object_coordinates, camera_rb_poses, t_co, camera_matrix, distortion_coeffs, is_checkerboard=False)
     print(result)
 
 

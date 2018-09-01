@@ -105,8 +105,6 @@ def extract_data_from_bags(bag_file_paths, output_file):
         camera_marker_count = None
         checkerboard_marker_count = None
         checkerboard_markers = []
-        bag_image_coordinates = []
-        bag_object_coordinates = []
 
         bag = rosbag.Bag(bag_file_path)
         tf_buffer = calibration_common.load_tf_history_from_bag(bag)
@@ -188,7 +186,7 @@ def main():
         "more_calibration_data/board/middle/temp",
         # "more_calibration_data/board/side",
     ])
-    extract_data_from_bags(bag_file_paths, "../data/board_data.npz")
+    extract_data_from_bags(bag_file_paths, "../data/2_boards.npz")
 
 
 if __name__ == "__main__":
