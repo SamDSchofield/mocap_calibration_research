@@ -42,10 +42,6 @@ def calculate_t_mos(camera_rb_poses, t_rc, t_co):
 
 def match_checkerboard_corners(image_coords, object_coords, t_mo_prior, camera_matrix, distortion_coeffs):
     """Utilizes the fact that the image coords and object coords are in the same order bar missing corners"""
-    # If they are the same length then they are in the right order
-    if len(image_coords) == len(object_coords):
-        return object_coords
-
     # This is the worst case for how wrong the indices are
     diff = len(object_coords) - len(image_coords)
 
@@ -54,6 +50,19 @@ def match_checkerboard_corners(image_coords, object_coords, t_mo_prior, camera_m
     rotation, _ = cv2.Rodrigues(rotation[:3, :3])
     projected_coords, _ = cv2.projectPoints(object_coords, rotation, translation, camera_matrix, distortion_coeffs)
     projected_coords = projected_coords.squeeze()
+
+    # Need to make sure the checkerboard is the right way round
+    error_1 = np.linalg.norm(image_coords[0] - projected_coords[0])
+    error_2 = np.linalg.norm(image_coords[0] - projected_coords[-1])
+    print(np.linalg.norm(image_coords[0] - image_coords[-1]))
+    if error_2 < error_1:
+        projected_coords = projected_coords[::-1]
+        object_coords = object_coords[::-1]
+        print("flipping checkerboard")
+
+    # If they are the same length then they are in the right order
+    if len(image_coords) == len(object_coords):
+        return object_coords
 
     matched_object_coords = []
     matched_proj_coords = []
@@ -98,14 +107,13 @@ def estimate_pose(image_coords, object_coords, camera_matrix, distortion_coeffs,
     return t_mo
 
 
-def remove_outliers(calibration_tfs):
+def remove_outliers(calibration_tfs, translation_tolerance=0.1, rotation_tolerance=10):
     estimate = np.array([0, 0, 0, 0, 0, 0])
-    tolerances = [0.05, 0.05, 0.05, 5, 5, 5]
-    estimate_mask = np.any(np.abs(calibration_tfs - estimate) < tolerances, axis=1)
+    tolerances = [translation_tolerance] * 3 + [rotation_tolerance] * 3
+    estimate_mask = np.all(np.abs(calibration_tfs - estimate) < tolerances, axis=1)
 
-    tolerances = [0.05, 0.05, 0.05, 5, 5, 5]
     medians = np.median(calibration_tfs, axis=0)
-    median_mask = np.any(np.abs(calibration_tfs - medians) < tolerances, axis=1)
+    median_mask = np.all(np.abs(calibration_tfs - medians) < tolerances, axis=1)
 
     mask = estimate_mask & median_mask
     return np.array(calibration_tfs)[mask], mask
@@ -171,7 +179,8 @@ def calibrate(all_image_coordinates, all_object_coordinates, t_mrs, t_co, camera
     # Remove the outliers and determine the average calibration transform
     tf_rc_posteriors, mask = remove_outliers(tf_rc_posteriors)
     tf_rc_posterior = np.mean(tf_rc_posteriors, axis=0)
-    tf_rc_posterior = transformations.compose_matrix(translate=tf_rc_posterior[:3], angles=np.radians(tf_rc_posterior[3:]))
+    t_rc_posterior = transformations.compose_matrix(translate=tf_rc_posterior[:3], angles=np.radians(tf_rc_posterior[3:]))
+    print(tf_rc_posterior)
 
     # Filter outlier frames
     count = len(all_image_coordinates)
@@ -189,7 +198,7 @@ def calibrate(all_image_coordinates, all_object_coordinates, t_mrs, t_co, camera
     object_coords_r = np.vstack(object_coords_r)
 
     image_coords = np.vstack(np.vstack(all_image_coordinates))
-    prior = calibration_common.T_to_tf(tf_rc_posterior)
+    prior = calibration_common.T_to_tf(t_rc_posterior)
 
     def f(tf_rc):
         t_ro = np.dot(calibration_common.tf_to_T(tf_rc), t_co)
@@ -202,7 +211,7 @@ def calibrate(all_image_coordinates, all_object_coordinates, t_mrs, t_co, camera
 def main():
     # is_checkerboard = True
     is_checkerboard = False
-    data = np.load("../data/marker_data.npz")
+    data = np.load("../data/sideways_board_data.npz")
     # data = np.load("../data/marker_data.npz")
 
     bag_files = data['bag_files']
@@ -221,16 +230,21 @@ def main():
 
 
     # Remove data that is missing camera or calibration object markers
+    is_checkerboard = True
     if is_checkerboard:
         filter_mask = create_insufficient_markers_mask(
             camera_marker_counts, calibration_object_marker_counts, 5, 5)
+        mask = [0 if len(row) != 187 else 1 for row in all_image_coordinates]
+        print(mask)
     else:
         filter_mask = create_insufficient_markers_mask(
             camera_marker_counts, calibration_object_marker_counts, 6, 14)
+    is_checkerboard = False
 
     camera_rb_poses = camera_rb_poses[filter_mask]
     all_image_coordinates = all_image_coordinates[filter_mask]
     all_object_coordinates = all_object_coordinates[filter_mask]
+
 
     result = calibrate(all_image_coordinates, all_object_coordinates, camera_rb_poses, t_co, camera_matrix, distortion_coeffs, is_checkerboard=is_checkerboard)
     print(result)
