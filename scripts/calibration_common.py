@@ -13,7 +13,7 @@ def Ts_to_tfs(Ts):
     calibration_tfs = []
     for transform in Ts:
         _, _, rotation, translation, _ = transformations.decompose_matrix(transform)
-        calibration_tfs.append(np.append(translation, np.degrees(rotation)))
+        calibration_tfs.append(np.append(translation, rotation))
     return calibration_tfs
 
 
