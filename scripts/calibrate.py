@@ -21,6 +21,7 @@ import scipy.spatial
 import scipy.stats
 import cv2
 from tf import transformations
+import random
 
 import calibration_common
 
@@ -59,23 +60,40 @@ def match_checkerboard_corners(image_coords, object_coords, t_mo_prior, camera_m
         object_coords = object_coords[::-1]
         print("flipping checkerboard")
 
-    # If they are the same length then they are in the right order
-    if len(image_coords) == len(object_coords):
-        return object_coords
+    print(np.mean(np.linalg.norm(projected_coords - image_coords, axis=1)))
+    # # Corners are x-y format
+    # box = cv2.boxPoints(cv2.minAreaRect(image_coords))
+    #
+    # combs = []
+    # for corner in box:
+    #    combs.append((box[0], corner))
+    # combs = list(reversed(sorted(combs, key=lambda x: np.linalg.norm(x[0] - x[1]))))
+    # length_points = combs[1]
+    # components = np.linalg.norm(length_points, axis=1)
+    #
+    #
+    # print("h, v", components)
+    #
+    # draw = True
+    # if draw:
+    #     # Find length
+    #     image = np.zeros((1080, 1920), dtype="uint8")
+    #     image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    #     box = np.int0(box)
+    #     image = cv2.drawContours(image, [box], 0, (0, 0, 255), 2)
+    #     print(length_points)
+    #     p1 = tuple(length_points[0])
+    #     p2 = tuple(length_points[1])
+    #     print(p1)
+    #     image = cv2.line(image, p1, p2, (0, 255, 0))
+    #     print(len(image_coords))
+    #     for image_coord in image_coords:
+    #         image = cv2.circle(image, (int(image_coord[0]), int(image_coord[1])), 1, (255, 0, 0))
+    #
+    #     cv2.imshow("", image)
+    #     cv2.waitKey(0)
 
-    matched_object_coords = []
-    matched_proj_coords = []
-    for i, image_coord in enumerate(image_coords):
-        best_match = projected_coords[i]
-        best_object_coord = object_coords[i]
-        # Find the object coord that matches the image coord within the possible options
-        for proj_coord, object_coord in zip(projected_coords[i:i + diff + 1], object_coords[i:i + diff + 1]):
-            if np.linalg.norm(image_coord - proj_coord) < np.linalg.norm(image_coord - best_match):
-                best_match = proj_coord
-                best_object_coord = object_coord
-        matched_proj_coords.append(best_match)
-        matched_object_coords.append(best_object_coord)
-    return np.array(matched_object_coords).squeeze()
+    return object_coords
 
 
 def match_markers(image_coords, object_coords, camera_pose_prior, camera_matrix, distortion_coeffs):
@@ -90,6 +108,8 @@ def match_markers(image_coords, object_coords, camera_pose_prior, camera_matrix,
     projected_coords = projected_coords.squeeze()
     tree = scipy.spatial.cKDTree(projected_coords)
     dists, indices = tree.query(image_coords, k=1)
+    # print(np.mean(dists))
+    # print(indices)
     return object_coords[indices]
 
 
@@ -109,7 +129,10 @@ def estimate_pose(image_coords, object_coords, camera_matrix, distortion_coeffs,
     return t_mo
 
 
-def remove_outliers(calibration_tfs, translation_tolerance=0.1, rotation_tolerance=10):
+def remove_outliers(calibration_tfs, translation_tolerance=0.1, rotation_tolerance=0.174):
+    """
+    Angles are in radians
+    """
     estimate = np.array([0, 0, 0, 0, 0, 0])
     tolerances = [translation_tolerance] * 3 + [rotation_tolerance] * 3
     estimate_mask = np.all(np.abs(calibration_tfs - estimate) < tolerances, axis=1)
@@ -148,8 +171,9 @@ def calculate_t_rcs(all_image_coordinates, all_object_coordinates, t_mrs, camera
     return t_rcs
 
 
-def calibrate(all_image_coordinates, all_object_coordinates, t_mrs, t_co, camera_matrix, distortion_coeffs, is_checkerboard):
-
+def calibrate(all_image_coordinates, all_object_coordinates, t_mrs, t_co, camera_matrix, distortion_coeffs, verbose=True, is_checkerboard=False):
+    if verbose:
+        print("Calibrating")
     # Roughly calculate the pose of the optical frame using t_rc=0
     t_mo_priors = calculate_t_mos(t_mrs, np.identity(4), t_co)
 
@@ -165,18 +189,20 @@ def calibrate(all_image_coordinates, all_object_coordinates, t_mrs, t_co, camera
     # Remove the outliers and determine the average calibration transform
     tf_rc_inliers, _ = remove_outliers(tf_rcs)
     tf_rc_initial = np.mean(tf_rc_inliers, axis=0)
-    t_rc_initial = transformations.compose_matrix(translate=tf_rc_initial[:3], angles=np.radians(tf_rc_initial[3:]))
+    t_rc_initial = transformations.compose_matrix(translate=tf_rc_initial[:3], angles=tf_rc_initial[3:])
 
-    print("Estimate after first pass:")
-    print(tf_rc_initial)
-    print("Refining estimate...")
+    if verbose:
+        print("Estimate after first pass:")
+        print(tf_rc_initial)
+        print("Refining estimate...")
 
     # Use the calculated calibration transform to get better optical-frame priors
     t_mo_priors = calculate_t_mos(t_mrs, t_rc_initial, t_co)
 
+
     # Perform better matching now we have good optical frame priors
     matched_object_coordinates = find_image_object_correspondences(all_image_coordinates, all_object_coordinates, t_mo_priors,
-                                                                   camera_matrix, distortion_coeffs, is_checkerboard=False)
+                                                                   camera_matrix, distortion_coeffs, is_checkerboard=is_checkerboard)
 
     # Recalculate the calibration transforms again, this time the matches should be good, so use an iterative approach
     t_rc_posteriors = calculate_t_rcs(all_image_coordinates, matched_object_coordinates, t_mrs, camera_matrix, distortion_coeffs, t_co, use_ransac=False)
@@ -187,17 +213,21 @@ def calibrate(all_image_coordinates, all_object_coordinates, t_mrs, t_co, camera
     # Remove the outliers and determine the average calibration transform
     tf_rc_posteriors, mask = remove_outliers(tf_rc_posteriors)
     tf_rc_posterior = np.mean(tf_rc_posteriors, axis=0)
-    t_rc_posterior = transformations.compose_matrix(translate=tf_rc_posterior[:3], angles=np.radians(tf_rc_posterior[3:]))
-    print("Estimate after refining:")
-    print(tf_rc_posterior)
-    print("Optimising estimate...")
+    t_rc_posterior = transformations.compose_matrix(translate=tf_rc_posterior[:3], angles=tf_rc_posterior[3:])
+
+    if verbose:
+        print("Estimate after refining:")
+        print(tf_rc_posterior)
+        print("Optimising estimate...")
 
     # Filter outlier frames
     count = len(all_image_coordinates)
     all_image_coordinates = all_image_coordinates[mask]
     matched_object_coordinates = matched_object_coordinates[mask]
     t_mrs = t_mrs[mask]
-    print("Num inliers {}/{}".format(len(all_image_coordinates), count))
+
+    if verbose:
+        print("Num inliers {}/{}".format(len(all_image_coordinates), count))
 
     # Project object points into camera rigid body frame beforehand, as one big array (not separated by bags)
     object_coords_r = []
@@ -218,11 +248,84 @@ def calibrate(all_image_coordinates, all_object_coordinates, t_mrs, t_co, camera
     return res.x
 
 
+def group_list(list_, group_size):
+    return zip(*(iter(list_),) * group_size)
+
+
+def k_fold(data_file, results_file, is_checkerboard, k=5):
+
+    data = np.load(data_file)
+
+    calibration_object_marker_counts = data['calibration_object_marker_counts']
+    camera_marker_counts = data['camera_marker_counts']
+
+    camera_matrix = data['camera_matrix']
+    distortion_coeffs = data['distortion_coeffs']
+
+    t_co = data['cam_to_optical_frame']
+    camera_rb_poses = data['camera_rb_poses']
+
+    all_image_coordinates = data['image_coordinates']
+    all_object_coordinates = data['object_coordinates']
+
+    bag_files = data['bag_files']
+
+
+    # Remove data that is missing camera or calibration object markers
+    # if is_checkerboard:
+    #     filter_mask = create_insufficient_markers_mask(
+    #         camera_marker_counts, calibration_object_marker_counts, 5, 5)
+    # else:
+    #     filter_mask = create_insufficient_markers_mask(
+    #         camera_marker_counts, calibration_object_marker_counts, 6, 14)
+    #
+    # bag_files = bag_files[filter_mask]
+    # camera_rb_poses = camera_rb_poses[filter_mask]
+    # all_image_coordinates = all_image_coordinates[filter_mask]
+    # all_object_coordinates = all_object_coordinates[filter_mask]
+
+    random.seed = 3
+    distinct_bags = list(set(bag_files))
+    files_per_fold = len(distinct_bags) // k
+    random.shuffle(distinct_bags)
+
+    folds = group_list(distinct_bags, files_per_fold)
+    all_train_bags = []
+    all_test_bags = []
+    t_rcs = []
+    for fold in folds:
+        fold_mask = np.logical_not(np.in1d(bag_files, fold))
+
+        fold_camera_rb_poses = camera_rb_poses[fold_mask]
+        fold_image_coordinates = all_image_coordinates[fold_mask]
+        fold_object_coordinates = all_object_coordinates[fold_mask]
+        result = calibrate(fold_image_coordinates, fold_object_coordinates, fold_camera_rb_poses, t_co, camera_matrix, distortion_coeffs, verbose=True, is_checkerboard=is_checkerboard)
+
+        print(result)
+        t_rcs.append(result)
+        train_bags = list(set(bag_files[fold_mask]))
+        test_bags = list(set(bag_files[np.logical_not(fold_mask)]))
+        all_train_bags.append(train_bags)
+        all_test_bags.append(test_bags)
+
+    np.savez(
+        results_file,
+        t_rcs=t_rcs,
+        all_train_bags=all_train_bags,
+        all_test_bags=all_test_bags,
+        readme="""
+        t_rcs=calibration transform from rigid body to camera_link.
+        all_train_bags=the bags each transform was calibrated on.
+        all_test_bags=the bags each transform should be tested on.
+        """
+    )
+
+
 def main():
-    # is_checkerboard = True
-    is_checkerboard = False
-    # data = np.load("../data/2_boards.npz")
-    data = np.load("../data/marker_data.npz")
+    is_checkerboard = True
+    # is_checkerboard = False
+    data = np.load("../data/5_boards.npz")
+    # data = np.load("../data/5_marker_data.npz")
 
     bag_files = data['bag_files']
 
@@ -238,7 +341,6 @@ def main():
     all_image_coordinates = data['image_coordinates']
     all_object_coordinates = data['object_coordinates']
 
-
     # Remove data that is missing camera or calibration object markers
     if is_checkerboard:
         filter_mask = create_insufficient_markers_mask(
@@ -251,11 +353,13 @@ def main():
     all_image_coordinates = all_image_coordinates[filter_mask]
     all_object_coordinates = all_object_coordinates[filter_mask]
 
-    result = calibrate(all_image_coordinates, all_object_coordinates, camera_rb_poses, t_co, camera_matrix, distortion_coeffs, is_checkerboard=False)
+    result = calibrate(all_image_coordinates, all_object_coordinates, camera_rb_poses, t_co, camera_matrix, distortion_coeffs, verbose=True)
     print(result)
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    # k_fold("../data/5_marker_data.npz", "../data/marker_calibration.npz", False, 5)
+    k_fold("../data/5_boards.npz", "../data/board_calibration.npz", True, k=3)
 
 
