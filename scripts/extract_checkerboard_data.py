@@ -66,16 +66,19 @@ def detect_checkerboard(image, shape, size, threshold=170, max_value=255):
     _, image = cv2.threshold(image, threshold, max_value, cv2.THRESH_BINARY)
 
     flags = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_FAST_CHECK | cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_FILTER_QUADS
-    _, corners = cv2.findChessboardCorners(image, shape, None, flags)
+    found, corners = cv2.findChessboardCorners(image, shape, None, flags)
 
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 1000, 0.001)
-    corners_refined = np.squeeze(cv2.cornerSubPix(image, corners, (7, 7), (-1, -1), criteria))
-    if corners_refined[0][0] > corners_refined[-1][0]:  # Because sometimes the chessboard is detected upside down
-        corners_refined = corners_refined[::-1]
+    if found:
+        print("found")
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 1000, 0.001)
+        corners_refined = np.squeeze(cv2.cornerSubPix(image, corners, (7, 7), (-1, -1), criteria))
+        if corners_refined[0][0] > corners_refined[-1][0]:  # Because sometimes the chessboard is detected upside down
+            corners_refined = corners_refined[::-1]
 
-    object_points = np.zeros((shape[0] * shape[1], 3), np.float32)
-    object_points[:, :2] = (np.mgrid[0:shape[0], 0:shape[1]].T.reshape(-1, 2)) * size
-    return corners_refined, object_points
+        object_points = np.zeros((shape[0] * shape[1], 3), np.float32)
+        object_points[:, :2] = (np.mgrid[0:shape[0], 0:shape[1]].T.reshape(-1, 2)) * size
+        return corners_refined, object_points
+    return None, None
 
 
 def extract_data_from_bags(bag_file_paths, output_file):
@@ -102,7 +105,7 @@ def extract_data_from_bags(bag_file_paths, output_file):
         print("Starting bag: {}".format(bag_file_path))
         camera_matrix = None
         distortion_coeffs = None
-        camera_marker_count = None
+        camera_marker_count = 0
         checkerboard_marker_count = None
         checkerboard_markers = []
 
@@ -186,7 +189,7 @@ def main():
         "more_calibration_data/board/middle/temp",
         # "more_calibration_data/board/side",
     ])
-    extract_data_from_bags(bag_file_paths, "../data/2_boards.npz")
+    extract_data_from_bags(bag_file_paths, "../data/5_boards.npz")
 
 
 if __name__ == "__main__":

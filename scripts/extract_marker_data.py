@@ -81,7 +81,7 @@ def extract_data_from_bags(bag_file_paths, output_file):
         camera_matrix = None
         distortion_coeffs = None
         object_coordinates = None
-        camera_marker_count = None
+        camera_marker_count = 0
 
         bag = rosbag.Bag(bag_file_path)
         tf_buffer = calibration_common.load_tf_history_from_bag(bag)
@@ -146,7 +146,7 @@ def main():
         "more_calibration_data/calibration-bags-19-08-18-compressed/temp",
         # "more_calibration_data/calibration-bags-25-08-18-compressed",
     ])
-    extract_data_from_bags(bag_file_paths, "../data/marker_data.npz")
+    extract_data_from_bags(bag_file_paths, "../data/5_marker_data.npz")
 
 
 if __name__ == "__main__":
