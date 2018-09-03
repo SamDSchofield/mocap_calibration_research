@@ -33,6 +33,12 @@ def tf_stamped_to_mat(transform):
     return mat
 
 
+def create_insufficient_markers_mask(c_marker_counts, o_marker_counts, expected_c_marker_count, expected_o_marker_count):
+    camera_mask = c_marker_counts == expected_c_marker_count
+    object_mask = o_marker_counts == expected_o_marker_count
+    return np.logical_and(camera_mask, object_mask)
+
+
 # From https://eng-git.canterbury.ac.nz/mje/enmt482_assignment2_2017/scripts/import_bag.py
 def load_tf_history_from_bag(bag, max_duration=100000, additional_static_tfs=()):
     """Load all the transforms from the bag to use later."""

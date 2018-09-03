@@ -26,10 +26,6 @@ import random
 import calibration_common
 
 
-def create_insufficient_markers_mask(c_marker_counts, o_marker_counts, expected_c_marker_count, expected_o_marker_count):
-    camera_mask = c_marker_counts == expected_c_marker_count
-    object_mask = o_marker_counts == expected_o_marker_count
-    return np.logical_and(camera_mask, object_mask)
 
 
 def calculate_t_mos(camera_rb_poses, t_rc, t_co):
@@ -58,9 +54,9 @@ def match_checkerboard_corners(image_coords, object_coords, t_mo_prior, camera_m
     if error_2 < error_1:
         projected_coords = projected_coords[::-1]
         object_coords = object_coords[::-1]
-        print("flipping checkerboard")
+        # print("flipping checkerboard")
 
-    print(np.mean(np.linalg.norm(projected_coords - image_coords, axis=1)))
+    # # print(np.mean(np.linalg.norm(projected_coords - image_coords, axis=1)))
     # # Corners are x-y format
     # box = cv2.boxPoints(cv2.minAreaRect(image_coords))
     #
@@ -69,11 +65,15 @@ def match_checkerboard_corners(image_coords, object_coords, t_mo_prior, camera_m
     #    combs.append((box[0], corner))
     # combs = list(reversed(sorted(combs, key=lambda x: np.linalg.norm(x[0] - x[1]))))
     # length_points = combs[1]
-    # components = np.linalg.norm(length_points, axis=1)
+    # horizontal = abs((length_points[0] - length_points[1])[0]) / 17
     #
     #
-    # print("h, v", components)
     #
+    #
+    # # print("h", h)
+
+
+
     # draw = True
     # if draw:
     #     # Find length
@@ -163,11 +163,13 @@ def calculate_t_rcs(all_image_coordinates, all_object_coordinates, t_mrs, camera
     t_rcs = []
     for image_coordinates, object_coordinates, camera_rb_pose in zip(all_image_coordinates, all_object_coordinates,
                                                                      t_mrs):
+
         optical_frame_pose = estimate_pose(image_coordinates, object_coordinates, camera_matrix, distortion_coeffs,
                                            use_ransac=use_ransac)
         camera_link_pose = np.matmul(optical_frame_pose, np.linalg.inv(t_co))
         calibration_transform = np.matmul(np.linalg.inv(camera_rb_pose), camera_link_pose)
         t_rcs.append(calibration_transform)
+
     return t_rcs
 
 
@@ -175,10 +177,11 @@ def calibrate(all_image_coordinates, all_object_coordinates, t_mrs, t_co, camera
     if verbose:
         print("Calibrating")
     # Roughly calculate the pose of the optical frame using t_rc=0
+
     t_mo_priors = calculate_t_mos(t_mrs, np.identity(4), t_co)
 
     # Find rough image-object correspondences (we will fix these later once we have a better idea of t_rc)
-    matched_object_coordinates = find_image_object_correspondences(all_image_coordinates, all_object_coordinates, t_mo_priors, camera_matrix, distortion_coeffs, is_checkerboard)
+    matched_object_coordinates = find_image_object_correspondences(all_image_coordinates, all_object_coordinates, t_mo_priors, camera_matrix, distortion_coeffs, False)
 
     # Calculate the calibration transforms
     t_rcs = calculate_t_rcs(all_image_coordinates, matched_object_coordinates, t_mrs, camera_matrix, distortion_coeffs, t_co, use_ransac=True)
@@ -219,6 +222,9 @@ def calibrate(all_image_coordinates, all_object_coordinates, t_mrs, t_co, camera
         print("Estimate after refining:")
         print(tf_rc_posterior)
         print("Optimising estimate...")
+
+    if is_checkerboard:
+        return tf_rc_posterior
 
     # Filter outlier frames
     count = len(all_image_coordinates)
@@ -272,17 +278,28 @@ def k_fold(data_file, results_file, is_checkerboard, k=5):
 
 
     # Remove data that is missing camera or calibration object markers
-    # if is_checkerboard:
-    #     filter_mask = create_insufficient_markers_mask(
-    #         camera_marker_counts, calibration_object_marker_counts, 5, 5)
-    # else:
-    #     filter_mask = create_insufficient_markers_mask(
-    #         camera_marker_counts, calibration_object_marker_counts, 6, 14)
-    #
-    # bag_files = bag_files[filter_mask]
-    # camera_rb_poses = camera_rb_poses[filter_mask]
-    # all_image_coordinates = all_image_coordinates[filter_mask]
-    # all_object_coordinates = all_object_coordinates[filter_mask]
+    mask = []
+    for img_coords, obj_coords in zip(all_image_coordinates, all_object_coordinates):
+        mask.append(len(img_coords) == len(obj_coords))
+    mask = np.array(mask)
+    bag_files = bag_files[mask]
+    camera_rb_poses = camera_rb_poses[mask]
+    all_image_coordinates = all_image_coordinates[mask]
+    all_object_coordinates = all_object_coordinates[mask]
+
+    if is_checkerboard:
+        filter_mask = create_insufficient_markers_mask(
+            camera_marker_counts, calibration_object_marker_counts, 6, 5)
+    else:
+        filter_mask = create_insufficient_markers_mask(
+            camera_marker_counts, calibration_object_marker_counts, 6, 14)
+
+    bag_files = bag_files[filter_mask]
+    print(len(camera_rb_poses))
+    camera_rb_poses = camera_rb_poses[filter_mask]
+    print(len(camera_rb_poses))
+    all_image_coordinates = all_image_coordinates[filter_mask]
+    all_object_coordinates = all_object_coordinates[filter_mask]
 
     random.seed = 3
     distinct_bags = list(set(bag_files))
@@ -322,9 +339,9 @@ def k_fold(data_file, results_file, is_checkerboard, k=5):
 
 
 def main():
-    is_checkerboard = True
-    # is_checkerboard = False
-    data = np.load("../data/5_boards.npz")
+    # is_checkerboard = True
+    is_checkerboard = False
+    data = np.load("../data/5_markers.npz")
     # data = np.load("../data/5_marker_data.npz")
 
     bag_files = data['bag_files']
@@ -342,16 +359,18 @@ def main():
     all_object_coordinates = data['object_coordinates']
 
     # Remove data that is missing camera or calibration object markers
-    if is_checkerboard:
-        filter_mask = create_insufficient_markers_mask(
-            camera_marker_counts, calibration_object_marker_counts, 5, 5)
-    else:
-        filter_mask = create_insufficient_markers_mask(
-            camera_marker_counts, calibration_object_marker_counts, 6, 14)
+    # if is_checkerboard:
+    #     filter_mask = create_insufficient_markers_mask(
+    #         camera_marker_counts, calibration_object_marker_counts, 5, 5)
+    # else:
+    #     filter_mask = create_insufficient_markers_mask(
+    #         camera_marker_counts, calibration_object_marker_counts, 6, 14)
 
-    camera_rb_poses = camera_rb_poses[filter_mask]
-    all_image_coordinates = all_image_coordinates[filter_mask]
-    all_object_coordinates = all_object_coordinates[filter_mask]
+    # print(len(camera_rb_poses))
+    # camera_rb_poses = camera_rb_poses[filter_mask]
+    # print(len(camera_rb_poses))
+    # all_image_coordinates = all_image_coordinates[filter_mask]
+    # all_object_coordinates = all_object_coordinates[filter_mask]
 
     result = calibrate(all_image_coordinates, all_object_coordinates, camera_rb_poses, t_co, camera_matrix, distortion_coeffs, verbose=True)
     print(result)
@@ -359,7 +378,7 @@ def main():
 
 if __name__ == "__main__":
     # main()
-    # k_fold("../data/5_marker_data.npz", "../data/marker_calibration.npz", False, 5)
-    k_fold("../data/5_boards.npz", "../data/board_calibration.npz", True, k=3)
+    k_fold("../data/all_markers.npz", "../data/marker_calibration.npz", is_checkerboard=False, k=5)
+    k_fold("../data/all_boards.npz", "../data/board_calibration.npz", is_checkerboard=True, k=5)
 
 

@@ -50,7 +50,7 @@ from tf import transformations
 def transform_markers_to_mocap_frame(checkerboard_rigid_body_poses, all_checkerboard_corners):
     all_object_coordinates = []
     board_rigid_body_to_optical_tf = transformations.compose_matrix(angles=np.radians((180, 0, 0)),
-                                                                    translate=(0.02, -0.02, -0.01))
+                                                                    translate=(0.035, 0, -0.01))
     for board_pose, object_coordinates in zip(checkerboard_rigid_body_poses, all_checkerboard_corners):
         mocap_to_board_optical_tf = np.matmul(board_pose, board_rigid_body_to_optical_tf)
         frame_object_coordinates = []
@@ -62,7 +62,7 @@ def transform_markers_to_mocap_frame(checkerboard_rigid_body_poses, all_checkerb
     return all_object_coordinates
 
 
-def detect_checkerboard(image, shape, size, threshold=170, max_value=255):
+def detect_checkerboard(image, shape, size, threshold=120, max_value=255):
     _, image = cv2.threshold(image, threshold, max_value, cv2.THRESH_BINARY)
 
     flags = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_FAST_CHECK | cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_FILTER_QUADS
@@ -78,6 +78,13 @@ def detect_checkerboard(image, shape, size, threshold=170, max_value=255):
         object_points = np.zeros((shape[0] * shape[1], 3), np.float32)
         object_points[:, :2] = (np.mgrid[0:shape[0], 0:shape[1]].T.reshape(-1, 2)) * size
         return corners_refined, object_points
+
+    # image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    # for corner in corners:
+    #     x, y = corner[0]
+    #     image = cv2.circle(image, (int(x), int(y)), 1, (0, 255, 0))
+    # cv2.imshow("a", image)
+    # cv2.waitKey(1)
     return None, None
 
 
@@ -97,8 +104,8 @@ def extract_data_from_bags(bag_file_paths, output_file):
     checkerboard_rigid_body_poses = []
 
     bridge = cv_bridge.CvBridge()
-    size = 0.02
-    shape = (17, 11)
+    size = 0.035
+    shape = (8, 5)
 
     for bag_file_path in bag_file_paths:
         print("*" * 80)
@@ -108,7 +115,8 @@ def extract_data_from_bags(bag_file_paths, output_file):
         camera_marker_count = 0
         checkerboard_marker_count = None
         checkerboard_markers = []
-
+        image_coordinates = None
+        object_coordinates = None
         bag = rosbag.Bag(bag_file_path)
         tf_buffer = calibration_common.load_tf_history_from_bag(bag)
 
@@ -139,6 +147,7 @@ def extract_data_from_bags(bag_file_paths, output_file):
 
                     if None not in [camera_rigid_body_pose, checkerboard_rigid_body_pose,
                                     image_coordinates, camera_marker_count, checkerboard_marker_count]:
+                        print("Storing data")
                         all_image_coordinates.append(image_coordinates)
                         all_checkerboard_corners.append(object_coordinates)
                         camera_rigid_body_poses.append(camera_rigid_body_pose)
@@ -149,6 +158,8 @@ def extract_data_from_bags(bag_file_paths, output_file):
                         all_calibration_markers.append(checkerboard_markers)
 
                     print([camera_marker_count, checkerboard_marker_count])
+
+
 
             elif topic == "/camera/color/camera_info":
                 camera_matrix = np.array(message.K).reshape((3, 3))
@@ -186,10 +197,10 @@ def extract_data_from_bags(bag_file_paths, output_file):
 
 def main():
     bag_file_paths = calibration_common.list_bag_files(base_path="/home/sam/Desktop", directories=[
-        "more_calibration_data/board/middle/temp",
+        "calibration_data_3-9-18/board/middle/normal",
         # "more_calibration_data/board/side",
     ])
-    extract_data_from_bags(bag_file_paths, "../data/5_boards.npz")
+    extract_data_from_bags(bag_file_paths, "../data/all_boards.npz")
 
 
 if __name__ == "__main__":

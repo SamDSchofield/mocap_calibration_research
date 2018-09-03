@@ -143,10 +143,10 @@ def extract_data_from_bags(bag_file_paths, output_file):
 
 def main():
     bag_file_paths = list_bag_files(base_path="/home/sam/Desktop", directories=[
-        "more_calibration_data/calibration-bags-19-08-18-compressed/temp",
+        "calibration_data_3-9-18/markers/middle",
         # "more_calibration_data/calibration-bags-25-08-18-compressed",
     ])
-    extract_data_from_bags(bag_file_paths, "../data/5_marker_data.npz")
+    extract_data_from_bags(bag_file_paths, "../data/all_markers.npz")
 
 
 if __name__ == "__main__":
