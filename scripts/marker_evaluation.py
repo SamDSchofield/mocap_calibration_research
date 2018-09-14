@@ -12,7 +12,7 @@ import scipy.stats
 from tf import transformations
 
 
-from calibration_common import create_insufficient_markers_mask
+import calibration_common
 
 
 def calculate_t_mos(camera_rb_poses, t_rc, t_co):
@@ -34,6 +34,8 @@ def match_markers(image_coords, object_coords, camera_pose_prior, camera_matrix,
     rotation, _ = cv2.Rodrigues(rotation[:3, :3])
     projected_coords, _ = cv2.projectPoints(object_coords, rotation, translation, camera_matrix, distortion_coeffs)
     projected_coords = projected_coords.squeeze()
+    projected_coords
+
     tree = scipy.spatial.cKDTree(projected_coords)
     dists, indices = tree.query(image_coords, k=1)
     output_image = np.zeros((1080, 1920), dtype="uint8")
@@ -62,7 +64,7 @@ def evaluate(t_rc, camera_rb_poses, all_image_coords, all_object_coords, t_co, c
     for t_mo, image_coords, object_coords in zip(t_mos, all_image_coords, all_object_coords):
         object_coords = match_markers(image_coords, object_coords, t_mo, camera_mat, distortion_coeffs)
 
-        projected_image_coords = project_markers(np.linalg.inv(t_mo), object_coords, camera_mat, distortion_coeffs)
+        projected_image_coords = calibration_common.project_markers(t_mo, object_coords, camera_mat, distortion_coeffs)
         total_reprojection_error += np.mean(np.linalg.norm(projected_image_coords - image_coords, axis=1))
     return total_reprojection_error / len(t_mos)
 
@@ -82,7 +84,7 @@ def evaluate_k_fold(marker_calibration_file, board_calibration_file, raw_data_fi
     all_object_coords = raw_data["object_coordinates"]
     cam_rb_poses = raw_data["camera_rb_poses"]
 
-    filter_mask = create_insufficient_markers_mask(camera_marker_counts, calibration_object_marker_counts, 6, 14)
+    filter_mask = calibration_common.create_insufficient_markers_mask(camera_marker_counts, calibration_object_marker_counts, 6, 16)
     bag_files = bag_files[filter_mask]
     all_image_coords = all_image_coords[filter_mask]
     all_object_coords = all_object_coords[filter_mask]
@@ -105,16 +107,17 @@ def evaluate_k_fold(marker_calibration_file, board_calibration_file, raw_data_fi
         test_object_coords = all_object_coords[test_mask]
         test_cam_rb_poses = cam_rb_poses[test_mask]
 
-        error = evaluate(marker_calibration, test_cam_rb_poses, test_image_coords, test_object_coords, t_co, camera_mat, distortion_coeffs)
-        marker_errors.append(error)
+        if len(test_cam_rb_poses) > 0:
+            error = evaluate(marker_calibration, test_cam_rb_poses, test_image_coords, test_object_coords, t_co, camera_mat, distortion_coeffs)
+            marker_errors.append(error)
 
-        error = evaluate(board_calibration, test_cam_rb_poses, test_image_coords, test_object_coords, t_co, camera_mat, distortion_coeffs)
-        board_errors.append(error)
+            error = evaluate(board_calibration, test_cam_rb_poses, test_image_coords, test_object_coords, t_co, camera_mat, distortion_coeffs)
+            board_errors.append(error)
 
     print("Marker mean {}, std {}".format(np.mean(marker_errors), np.std(marker_errors)))
     print("Board mean {}, std {}".format(np.mean(board_errors), np.std(board_errors)))
 
 
 if __name__ == "__main__":
-    evaluate_k_fold("../data/marker_calibration.npz", "../data/board_calibration.npz", "../data/all_markers.npz")
+    evaluate_k_fold("../data/marker_calibration_10_9_18.npz", "../data/board_calibration_10_9_18.npz", "../data/all_markers_10_9_18.npz")
     # evaluate_k_fold("../data/marker_calibration.npz", "../data/board_calibration.npz", "../data/all_boards.npz")

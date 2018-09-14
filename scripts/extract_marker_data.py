@@ -42,9 +42,13 @@ def detect_circles_contours(image, min_r, max_r):
             contours_circles.append(con)
 
     circles = np.ndarray((len(contours_circles), 3))
+    image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
     for i, contour in enumerate(contours_circles):
         position, radius = cv2.minEnclosingCircle(contour)
         circles[i] = (position[0], position[1], radius)
+        image = cv2.circle(image, (int(position[0]), int(position[1])), radius=int(radius), color=(0, 0, 255))
+    cv2.imshow("image", image)
+    cv2.waitKey(1)
     return circles
 
 
@@ -73,10 +77,11 @@ def extract_data_from_bags(bag_file_paths, output_file):
     bag_files = []
 
     bridge = cv_bridge.CvBridge()
-
+    short_bags = []
     for bag_file_path in bag_file_paths:
         print("*" * 80)
         print("Starting bag: {}".format(bag_file_path))
+
 
         camera_matrix = None
         distortion_coeffs = None
@@ -84,6 +89,8 @@ def extract_data_from_bags(bag_file_paths, output_file):
         camera_marker_count = 0
 
         bag = rosbag.Bag(bag_file_path)
+        if bag.get_message_count() < 1000:
+            short_bags.append(bag_file_path)
         tf_buffer = calibration_common.load_tf_history_from_bag(bag)
 
         camera_link_to_optical_frame_tf = calibration_common.tf_stamped_to_mat(
@@ -104,6 +111,8 @@ def extract_data_from_bags(bag_file_paths, output_file):
                             tf_buffer.lookup_transform("mocap", "Camera", t))
                     except tf2_ros.ExtrapolationException:
                         print("Tf lookup failed from mocap->Camera")
+                    except tf2_ros.LookupException:
+                        print("Tf lookup failed, target doesn't exist")
 
                     if camera_rigid_body_pose is not None:
                         all_image_coordinates.append(image_coordinates)
@@ -138,15 +147,16 @@ def extract_data_from_bags(bag_file_paths, output_file):
         calibration_object_marker_counts=calibration_object_marker_counts,
         bag_files=bag_files,
     )
+    print(short_bags)
     print("Saved data to {}".format(output_file))
 
 
 def main():
     bag_file_paths = list_bag_files(base_path="/home/sam/Desktop", directories=[
-        "calibration_data_3-9-18/markers/middle",
+        "calibration_data_10-9-18/markers",
         # "more_calibration_data/calibration-bags-25-08-18-compressed",
     ])
-    extract_data_from_bags(bag_file_paths, "../data/all_markers.npz")
+    extract_data_from_bags(bag_file_paths, "../data/all_markers_10_9_18.npz")
 
 
 if __name__ == "__main__":

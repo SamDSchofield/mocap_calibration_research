@@ -50,7 +50,7 @@ from tf import transformations
 def transform_markers_to_mocap_frame(checkerboard_rigid_body_poses, all_checkerboard_corners):
     all_object_coordinates = []
     board_rigid_body_to_optical_tf = transformations.compose_matrix(angles=np.radians((180, 0, 0)),
-                                                                    translate=(0.035, 0, -0.01))
+                                                                    translate=(0.035, 0, -0.012))
     for board_pose, object_coordinates in zip(checkerboard_rigid_body_poses, all_checkerboard_corners):
         mocap_to_board_optical_tf = np.matmul(board_pose, board_rigid_body_to_optical_tf)
         frame_object_coordinates = []
@@ -62,7 +62,7 @@ def transform_markers_to_mocap_frame(checkerboard_rigid_body_poses, all_checkerb
     return all_object_coordinates
 
 
-def detect_checkerboard(image, shape, size, threshold=120, max_value=255):
+def detect_checkerboard(image, shape, size, threshold=150, max_value=255):
     _, image = cv2.threshold(image, threshold, max_value, cv2.THRESH_BINARY)
 
     flags = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_FAST_CHECK | cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_FILTER_QUADS
@@ -80,9 +80,10 @@ def detect_checkerboard(image, shape, size, threshold=120, max_value=255):
         return corners_refined, object_points
 
     # image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-    # for corner in corners:
-    #     x, y = corner[0]
-    #     image = cv2.circle(image, (int(x), int(y)), 1, (0, 255, 0))
+    # if corners is not None:
+    #     for corner in corners:
+    #         x, y = corner[0]
+    #         image = cv2.circle(image, (int(x), int(y)), 1, (0, 255, 0))
     # cv2.imshow("a", image)
     # cv2.waitKey(1)
     return None, None
@@ -197,10 +198,10 @@ def extract_data_from_bags(bag_file_paths, output_file):
 
 def main():
     bag_file_paths = calibration_common.list_bag_files(base_path="/home/sam/Desktop", directories=[
-        "calibration_data_3-9-18/board/middle/normal",
+        "calibration_data_10-9-18/board",
         # "more_calibration_data/board/side",
     ])
-    extract_data_from_bags(bag_file_paths, "../data/all_boards.npz")
+    extract_data_from_bags(bag_file_paths, "../data/all_boards_10_9_18.npz")
 
 
 if __name__ == "__main__":

@@ -35,13 +35,6 @@ def match_markers(image_coords, object_coords, camera_pose_prior, camera_matrix,
     projected_coords = projected_coords.squeeze()
     tree = scipy.spatial.cKDTree(projected_coords)
     dists, indices = tree.query(image_coords, k=1)
-    # output_image = np.zeros((1080, 1920), dtype="uint8")
-    # output_image = cv2.cvtColor(output_image, cv2.COLOR_GRAY2BGR)
-    # for proj, img in zip(image_coords, projected_coords[indices]):
-    #     output_image = cv2.circle(output_image, (int(proj[0]), int(proj[1])), 1, (255, 0, 0))
-    #     output_image = cv2.circle(output_image, (int(img[0]), int(img[1])), 1, (0, 255, 0))
-    # cv2.imshow("a", output_image)
-    # cv2.waitKey(0)
     return object_coords[indices]
 
 
@@ -75,7 +68,7 @@ def evaluate(t_rc, camera_rb_poses, all_image_coords, all_calibration_markers, t
     shape = (8, 5)
 
     square_size = 0.035
-    marker_z = 0.01
+    marker_z = 0.012
     marker_positions = [
         (-square_size, 0, -marker_z),
         (square_size * 8, 0, -marker_z),
@@ -85,7 +78,6 @@ def evaluate(t_rc, camera_rb_poses, all_image_coords, all_calibration_markers, t
 
     total_error = 0
     for t_mo, image_coords, calibration_markers in zip(t_mos, all_image_coords, all_calibration_markers):
-
         checkerboard_coords = np.zeros((shape[0] * shape[1], 3), np.float32)
         checkerboard_coords[:, :2] = (np.mgrid[0:shape[0], 0:shape[1]].T.reshape(-1, 2)) * square_size
 
@@ -96,11 +88,26 @@ def evaluate(t_rc, camera_rb_poses, all_image_coords, all_calibration_markers, t
         for marker in marker_positions:
             marker = np.matmul(t_m_ch, np.append(marker, 1))[:3]
             match, distance = find_closest_marker_distance(marker, calibration_markers)
+            print(match[2] - marker[2])
             total_distance += distance
-        #     print(distance)
-        # print("-" * 80)
-        print(total_distance / 4)
-        total_error += (total_distance / 4)
+        total_distance /= 4
+        print("*" * 80)
+        # To handle when the checkerboard was flipped during calibration
+        checkerboard_coords = checkerboard_coords[::-1]
+        retval, rvec, tvec = cv2.solvePnP(checkerboard_coords, image_coords, camera_mat, distortion_coeffs)
+        t_o_ch = calibration_common.se3_to_T(rvec, tvec)
+        t_m_ch = np.matmul(t_mo, t_o_ch)
+        other_total_distance = 0
+        for marker in marker_positions:
+            marker = np.matmul(t_m_ch, np.append(marker, 1))[:3]
+            match, distance = find_closest_marker_distance(marker, calibration_markers)
+            other_total_distance += distance
+            print(match[2] - marker[2])
+        other_total_distance /= 4
+
+        if other_total_distance < total_distance:
+            total_distance = other_total_distance
+        total_error += total_distance
     return total_error / len(t_mos)
 
 
@@ -142,10 +149,11 @@ def evaluate_k_fold(marker_calibration_file, board_calibration_file, raw_data_fi
         test_image_coords = all_image_coords[test_mask]
         test_cam_rb_poses = cam_rb_poses[test_mask]
         test_calibration_markers = all_calibration_markers[test_mask]
-
+        print("Marker")
         error = evaluate(marker_calibration, test_cam_rb_poses, test_image_coords, test_calibration_markers, t_co, camera_mat, distortion_coeffs)
         marker_errors.append(error)
 
+        print("Board")
         error = evaluate(board_calibration, test_cam_rb_poses, test_image_coords, test_calibration_markers, t_co, camera_mat, distortion_coeffs)
         board_errors.append(error)
 
@@ -154,4 +162,4 @@ def evaluate_k_fold(marker_calibration_file, board_calibration_file, raw_data_fi
 
 
 if __name__ == "__main__":
-    evaluate_k_fold("../data/marker_calibration.npz", "../data/board_calibration.npz", "../data/all_boards.npz")
+    evaluate_k_fold("../data/marker_calibration_10_9_18.npz", "../data/board_calibration_10_9_18.npz", "../data/all_boards_10_9_18.npz")
