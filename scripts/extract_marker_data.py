@@ -52,7 +52,7 @@ def detect_circles_contours(image, min_r, max_r):
     return circles
 
 
-def detect_mocap_markers(image, threshold_value=50, morph_size=3, min_r=3, max_r=20):
+def detect_mocap_markers(image, threshold_value=220, morph_size=3, min_r=3, max_r=30):
     # Threshold the image
     _, image = cv2.threshold(image[:, :], threshold_value, 255, cv2.THRESH_BINARY)
 
@@ -153,10 +153,10 @@ def extract_data_from_bags(bag_file_paths, output_file):
 
 def main():
     bag_file_paths = list_bag_files(base_path="/home/sam/Desktop", directories=[
-        "calibration_data_10-9-18/markers",
+        "distance",
         # "more_calibration_data/calibration-bags-25-08-18-compressed",
     ])
-    extract_data_from_bags(bag_file_paths, "../data/all_markers_10_9_18.npz")
+    extract_data_from_bags(bag_file_paths, "../data/distnace.npz")
 
 
 if __name__ == "__main__":

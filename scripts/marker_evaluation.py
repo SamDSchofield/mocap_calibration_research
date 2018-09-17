@@ -84,11 +84,11 @@ def evaluate_k_fold(marker_calibration_file, board_calibration_file, raw_data_fi
     all_object_coords = raw_data["object_coordinates"]
     cam_rb_poses = raw_data["camera_rb_poses"]
 
-    filter_mask = calibration_common.create_insufficient_markers_mask(camera_marker_counts, calibration_object_marker_counts, 6, 16)
-    bag_files = bag_files[filter_mask]
-    all_image_coords = all_image_coords[filter_mask]
-    all_object_coords = all_object_coords[filter_mask]
-    cam_rb_poses = cam_rb_poses[filter_mask]
+    # filter_mask = calibration_common.create_insufficient_markers_mask(camera_marker_counts, calibration_object_marker_counts, 6, 16)
+    # bag_files = bag_files[filter_mask]
+    # all_image_coords = all_image_coords[filter_mask]
+    # all_object_coords = all_object_coords[filter_mask]
+    # cam_rb_poses = cam_rb_poses[filter_mask]
 
     marker_calibration_data = np.load(marker_calibration_file)
     marker_calibrations = marker_calibration_data["t_rcs"]
@@ -110,6 +110,7 @@ def evaluate_k_fold(marker_calibration_file, board_calibration_file, raw_data_fi
         if len(test_cam_rb_poses) > 0:
             error = evaluate(marker_calibration, test_cam_rb_poses, test_image_coords, test_object_coords, t_co, camera_mat, distortion_coeffs)
             marker_errors.append(error)
+            print(test_bags, error)
 
             error = evaluate(board_calibration, test_cam_rb_poses, test_image_coords, test_object_coords, t_co, camera_mat, distortion_coeffs)
             board_errors.append(error)
@@ -119,5 +120,5 @@ def evaluate_k_fold(marker_calibration_file, board_calibration_file, raw_data_fi
 
 
 if __name__ == "__main__":
-    evaluate_k_fold("../data/marker_calibration_10_9_18.npz", "../data/board_calibration_10_9_18.npz", "../data/all_markers_10_9_18.npz")
+    evaluate_k_fold("../data/distance_calibration.npz", "../data/board_calibration_10_9_18.npz", "../data/distance.npz")
     # evaluate_k_fold("../data/marker_calibration.npz", "../data/board_calibration.npz", "../data/all_boards.npz")

@@ -344,10 +344,59 @@ def k_fold(data_file, results_file, is_checkerboard, k=5):
     )
 
 
+def distance_calibration(data_file, results_file):
+    data = np.load(data_file)
+
+    bag_files = data['bag_files']
+
+    calibration_object_marker_counts = data['calibration_object_marker_counts']
+    camera_marker_counts = data['camera_marker_counts']
+
+    camera_matrix = data['camera_matrix']
+    distortion_coeffs = data['distortion_coeffs']
+
+    t_co = data['cam_to_optical_frame']
+    camera_rb_poses = data['camera_rb_poses']
+
+    all_image_coordinates = data['image_coordinates']
+    all_object_coordinates = data['object_coordinates']
+
+    all_train_bags = []
+    all_test_bags = []
+    t_rcs = []
+    for bag in set(bag_files):
+        mask = bag_files == bag
+
+        fold_camera_rb_poses = camera_rb_poses[mask]
+        fold_image_coordinates = all_image_coordinates[mask]
+        fold_object_coordinates = all_object_coordinates[mask]
+        result = calibrate(fold_image_coordinates, fold_object_coordinates, fold_camera_rb_poses, t_co, camera_matrix,
+                           distortion_coeffs, verbose=True, is_checkerboard=False)
+
+        print(result)
+        t_rcs.append(result)
+        train_bags = bag
+        test_bags = list(set(bag_files[np.logical_not(mask)]))
+        all_train_bags.append(train_bags)
+        all_test_bags.append(test_bags)
+    np.savez(
+        results_file,
+        t_rcs=t_rcs,
+        all_train_bags=all_train_bags,
+        all_test_bags=all_test_bags,
+        readme="""
+        t_rcs=calibration transform from rigid body to camera_link.
+        all_train_bags=the bags each transform was calibrated on.
+        all_test_bags=the bags each transform should be tested on.
+        """
+    )
+
+
+
 def main():
     # is_checkerboard = True
     is_checkerboard = False
-    data = np.load("../data/all_markers.npz")
+    data = np.load("../data/distance.npz")
     # data = np.load("../data/5_marker_data.npz")
 
     bag_files = data['bag_files']
@@ -365,18 +414,18 @@ def main():
     all_object_coordinates = data['object_coordinates']
 
     # Remove data that is missing camera or calibration object markers
-    if is_checkerboard:
-        filter_mask = calibration_common.create_insufficient_markers_mask(
-            camera_marker_counts, calibration_object_marker_counts, 5, 5)
-    else:
-        filter_mask = calibration_common.create_insufficient_markers_mask(
-            camera_marker_counts, calibration_object_marker_counts, 6, 14)
+    # if is_checkerboard:
+    #     filter_mask = calibration_common.create_insufficient_markers_mask(
+    #         camera_marker_counts, calibration_object_marker_counts, 5, 5)
+    # else:
+    #     filter_mask = calibration_common.create_insufficient_markers_mask(
+    #         camera_marker_counts, calibration_object_marker_counts, 6, 14)
 
     # print(len(camera_rb_poses))
-    camera_rb_poses = camera_rb_poses[filter_mask]
-    print(len(camera_rb_poses))
-    all_image_coordinates = all_image_coordinates[filter_mask]
-    all_object_coordinates = all_object_coordinates[filter_mask]
+    # camera_rb_poses = camera_rb_poses[filter_mask]
+    # print(len(camera_rb_poses))
+    # all_image_coordinates = all_image_coordinates[filter_mask]
+    # all_object_coordinates = all_object_coordinates[filter_mask]
 
     result = calibrate(all_image_coordinates, all_object_coordinates, camera_rb_poses, t_co, camera_matrix, distortion_coeffs, verbose=True)
     print(result)
@@ -384,7 +433,8 @@ def main():
 
 if __name__ == "__main__":
     # main()
-    k_fold("../data/all_markers_10_9_18.npz", "../data/marker_calibration_10_9_18.npz", is_checkerboard=False, k=5)
+    distance_calibration("../data/distance.npz", "../data/distance_calibration.npz")
+    # k_fold("../data/distance.npz", "../data/distance_calibration.npz", is_checkerboard=False, k=4)
     # k_fold("../data/all_boards_10_9_19.npz", "../data/board_calibration_10_9_18.npz", is_checkerboard=True, k=5)
 
 
