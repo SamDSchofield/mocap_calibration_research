@@ -120,5 +120,5 @@ def evaluate_k_fold(marker_calibration_file, board_calibration_file, raw_data_fi
 
 
 if __name__ == "__main__":
-    evaluate_k_fold("../data/distance_calibration.npz", "../data/board_calibration_10_9_18.npz", "../data/distance.npz")
-    # evaluate_k_fold("../data/marker_calibration.npz", "../data/board_calibration.npz", "../data/all_boards.npz")
+    # evaluate_k_fold("../data/distance_calibration.npz", "../data/board_calibration_10_9_18.npz", "../data/distance.npz")
+    evaluate_k_fold("../data/marker_calibration_10_9_18.npz", "../data/board_calibration_10_9_18.npz", "../data/all_markers_10_9_18.npz")
