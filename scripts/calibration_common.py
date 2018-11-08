@@ -70,11 +70,12 @@ def list_bags_in_dir(path):
     return bags
 
 
-def list_bag_files(base_path, directories):
+def list_bag_files(directories, base_path=None):
     bags_strings = []
     for _dir in directories:
-        path = "{}/{}".format(base_path, _dir)
-        bags_strings += list_bags_in_dir(path)
+        if base_path is not None:
+            _dir = "{}/{}".format(base_path, _dir)
+        bags_strings += list_bags_in_dir(_dir)
     return bags_strings
 
 
