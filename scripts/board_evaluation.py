@@ -4,6 +4,7 @@ from __future__ import print_function, division
 
 import numpy as np
 
+import click
 import cv2
 import scipy
 import scipy.optimize
@@ -126,12 +127,12 @@ def evaluate_k_fold(marker_calibration_file, board_calibration_file, raw_data_fi
     cam_rb_poses = raw_data["camera_rb_poses"]
     all_calibration_markers = raw_data["all_calibration_markers"]
 
-    filter_mask = calibration_common.create_insufficient_markers_mask(camera_marker_counts, calibration_object_marker_counts, 6, 5)
+    filter_mask = calibration_common.create_insufficient_markers_mask(camera_marker_counts,
+                                                                      calibration_object_marker_counts, 6, 5)
     bag_files = bag_files[filter_mask]
     all_image_coords = all_image_coords[filter_mask]
     all_calibration_markers = all_calibration_markers[filter_mask]
     cam_rb_poses = cam_rb_poses[filter_mask]
-
 
     marker_calibration_data = np.load(marker_calibration_file)
     marker_calibrations = marker_calibration_data["t_rcs"]
@@ -150,16 +151,39 @@ def evaluate_k_fold(marker_calibration_file, board_calibration_file, raw_data_fi
         test_cam_rb_poses = cam_rb_poses[test_mask]
         test_calibration_markers = all_calibration_markers[test_mask]
         print("Marker")
-        error = evaluate(marker_calibration, test_cam_rb_poses, test_image_coords, test_calibration_markers, t_co, camera_mat, distortion_coeffs)
+        error = evaluate(marker_calibration, test_cam_rb_poses, test_image_coords, test_calibration_markers, t_co,
+                         camera_mat, distortion_coeffs)
         marker_errors.append(error)
 
         print("Board")
-        error = evaluate(board_calibration, test_cam_rb_poses, test_image_coords, test_calibration_markers, t_co, camera_mat, distortion_coeffs)
+        error = evaluate(board_calibration, test_cam_rb_poses, test_image_coords, test_calibration_markers, t_co,
+                         camera_mat, distortion_coeffs)
         board_errors.append(error)
 
     print("Marker mean {}, std {}".format(np.mean(marker_errors), np.std(marker_errors)))
     print("Board mean {}, std {}".format(np.mean(board_errors), np.std(board_errors)))
 
 
+def main():
+    evaluate_k_fold("../data/marker_calibration_10_9_18.npz", "../data/board_calibration_10_9_18.npz",
+                    "../data/all_boards_10_9_18.npz")
+
+
+@click.command()
+@click.argument("marker_calibration_file", type=click.Path(exists=True), nargs=1)
+@click.argument("board_calibration_file", type=click.Path(exists=True), nargs=1)
+@click.argument("raw_data_file", type=click.Path(exists=True), nargs=1)
+def cli(marker_calibration_file, board_calibration_file, raw_data_file):
+    """
+    \b
+    Evaluates the transformations in the given calibration files using a checkerboard.
+
+    The marker and board calibration files are the output of the calibrate script.
+    The raw_data_file is the output of the extract_checkerboard_data script.
+    """
+
+    evaluate_k_fold(marker_calibration_file, board_calibration_file, raw_data_file)
+
+
 if __name__ == "__main__":
-    evaluate_k_fold("../data/marker_calibration_10_9_18.npz", "../data/board_calibration_10_9_18.npz", "../data/all_boards_10_9_18.npz")
+    cli()
