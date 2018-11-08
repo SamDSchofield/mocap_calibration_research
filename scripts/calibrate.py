@@ -16,12 +16,14 @@ The following notation is use:
 from __future__ import division, print_function, absolute_import
 
 import numpy as np
+import random
+import click
+
+import cv2
 import scipy.optimize
 import scipy.spatial
 import scipy.stats
-import cv2
 from tf import transformations
-import random
 
 import calibration_common
 
@@ -69,13 +71,14 @@ def match_markers(image_coords, object_coords, camera_pose_prior, camera_matrix,
 
 def estimate_pose(image_coords, object_coords, camera_matrix, distortion_coeffs, use_ransac):
     if use_ransac:
-        _, rotation, translation, mask = cv2.solvePnPRansac(object_coords, image_coords, camera_matrix, distortion_coeffs,
-                                                     flags=cv2.SOLVEPNP_P3P, confidence=0.999)
+        _, rotation, translation, mask = cv2.solvePnPRansac(object_coords, image_coords, camera_matrix,
+                                                            distortion_coeffs,
+                                                            flags=cv2.SOLVEPNP_P3P, confidence=0.999)
     else:
 
         _, rotation, translation, mask = cv2.solvePnPRansac(object_coords, image_coords, camera_matrix,
-                                                                 distortion_coeffs,
-                                                                 flags=cv2.SOLVEPNP_P3P, confidence=0.99999)
+                                                            distortion_coeffs,
+                                                            flags=cv2.SOLVEPNP_P3P, confidence=0.99999)
 
         print(len(mask), len(object_coords))
         # Only use the inliers
@@ -85,9 +88,9 @@ def estimate_pose(image_coords, object_coords, camera_matrix, distortion_coeffs,
                                                 flags=cv2.SOLVEPNP_ITERATIVE)
     rotation, _ = cv2.Rodrigues(rotation)
     t_om = transformations.compose_matrix(
-        translate=translation.squeeze(), 
+        translate=translation.squeeze(),
         angles=transformations.euler_from_matrix(rotation))
-    
+
     t_mo = np.linalg.inv(t_om)
     return t_mo, mask.flatten()
 
@@ -104,26 +107,31 @@ def remove_outliers(calibration_tfs, translation_tolerance=0.1, rotation_toleran
     return np.array(calibration_tfs)[mask], mask
 
 
-def find_image_object_correspondences(all_image_coordinates, all_object_coordinates, t_mo_priors, camera_matrix, distortion_coeffs, is_checkerboard):
+def find_image_object_correspondences(all_image_coordinates, all_object_coordinates, t_mo_priors, camera_matrix,
+                                      distortion_coeffs, is_checkerboard):
     matched_markers = []
-    for image_coordinates, object_coordinates, t_mo_prior in zip(all_image_coordinates, all_object_coordinates, t_mo_priors):
+    for image_coordinates, object_coordinates, t_mo_prior in zip(all_image_coordinates, all_object_coordinates,
+                                                                 t_mo_priors):
         if is_checkerboard:
             matched_markers.append(
-                match_checkerboard_corners(image_coordinates, object_coordinates, t_mo_prior, camera_matrix, distortion_coeffs))
+                match_checkerboard_corners(image_coordinates, object_coordinates, t_mo_prior, camera_matrix,
+                                           distortion_coeffs))
         else:
             matched_markers.append(
                 match_markers(image_coordinates, object_coordinates, t_mo_prior, camera_matrix, distortion_coeffs))
     return np.array(matched_markers)
 
 
-def calculate_t_rcs(all_image_coordinates, all_object_coordinates, t_mrs, camera_matrix, distortion_coeffs, t_co, use_ransac):
+def calculate_t_rcs(all_image_coordinates, all_object_coordinates, t_mrs, camera_matrix, distortion_coeffs, t_co,
+                    use_ransac):
     t_rcs = []
     new_object_coordinates = []
     new_image_coordinates = []
-    for image_coordinates, object_coordinates, camera_rb_pose in zip(all_image_coordinates, all_object_coordinates, t_mrs):
-
-        optical_frame_pose, mask = estimate_pose(image_coordinates, object_coordinates, camera_matrix, distortion_coeffs,
-                                           use_ransac=use_ransac)
+    for image_coordinates, object_coordinates, camera_rb_pose in zip(all_image_coordinates, all_object_coordinates,
+                                                                     t_mrs):
+        optical_frame_pose, mask = estimate_pose(image_coordinates, object_coordinates, camera_matrix,
+                                                 distortion_coeffs,
+                                                 use_ransac=use_ransac)
         new_object_coordinates.append(object_coordinates[mask])
         new_image_coordinates.append(image_coordinates[mask])
         camera_link_pose = np.matmul(optical_frame_pose, np.linalg.inv(t_co))
@@ -133,17 +141,20 @@ def calculate_t_rcs(all_image_coordinates, all_object_coordinates, t_mrs, camera
     return t_rcs, np.array(new_image_coordinates), np.array(new_object_coordinates)
 
 
-def calibrate(all_image_coordinates, all_object_coordinates, t_mrs, t_co, camera_matrix, distortion_coeffs, verbose=True, is_checkerboard=False):
+def calibrate(all_image_coordinates, all_object_coordinates, t_mrs, t_co, camera_matrix, distortion_coeffs,
+              verbose=True, is_checkerboard=False):
     if verbose:
         print("Calibrating")
-    # Roughly calculate the pose of the optical frame using t_rc=0
+    # Roughly calculate the pose of the optical frame using t_rc=I
     t_mo_priors = calculate_t_mos(t_mrs, np.identity(4), t_co)
 
     # Find rough image-object correspondences (we will fix these later once we have a better idea of t_rc)
-    matched_object_coordinates = find_image_object_correspondences(all_image_coordinates, all_object_coordinates, t_mo_priors, camera_matrix, distortion_coeffs, False)
+    matched_object_coordinates = find_image_object_correspondences(all_image_coordinates, all_object_coordinates,
+                                                                   t_mo_priors, camera_matrix, distortion_coeffs, False)
 
     # Calculate the calibration transforms
-    t_rcs, _, _ = calculate_t_rcs(all_image_coordinates, matched_object_coordinates, t_mrs, camera_matrix, distortion_coeffs, t_co, use_ransac=True)
+    t_rcs, _, _ = calculate_t_rcs(all_image_coordinates, matched_object_coordinates, t_mrs, camera_matrix,
+                                  distortion_coeffs, t_co, use_ransac=True)
 
     # Convert the calibration transforms to an (x, y, z, r, p ,y) format for outlier removal and averaging
     tf_rcs = calibration_common.Ts_to_tfs(t_rcs)
@@ -162,11 +173,16 @@ def calibrate(all_image_coordinates, all_object_coordinates, t_mrs, t_co, camera
     t_mo_priors = calculate_t_mos(t_mrs, t_rc_initial, t_co)
 
     # Perform better matching now we have good optical frame priors
-    matched_object_coordinates = find_image_object_correspondences(all_image_coordinates, all_object_coordinates, t_mo_priors,
-                                                                   camera_matrix, distortion_coeffs, is_checkerboard=is_checkerboard)
+    matched_object_coordinates = find_image_object_correspondences(all_image_coordinates, all_object_coordinates,
+                                                                   t_mo_priors,
+                                                                   camera_matrix, distortion_coeffs,
+                                                                   is_checkerboard=is_checkerboard)
 
     # Recalculate the calibration transforms again, this time the matches should be good, so use an iterative approach
-    t_rc_posteriors, all_image_coordinates, all_object_coordinates = calculate_t_rcs(all_image_coordinates, matched_object_coordinates, t_mrs, camera_matrix, distortion_coeffs, t_co, use_ransac=False)
+    t_rc_posteriors, all_image_coordinates, all_object_coordinates = calculate_t_rcs(all_image_coordinates,
+                                                                                     matched_object_coordinates, t_mrs,
+                                                                                     camera_matrix, distortion_coeffs,
+                                                                                     t_co, use_ransac=False)
 
     # Convert the calibration transforms to an (x, y, z, r, p ,y) format for outlier removal and averaging
     tf_rc_posteriors = calibration_common.Ts_to_tfs(t_rc_posteriors)
@@ -200,7 +216,8 @@ def calibrate(all_image_coordinates, all_object_coordinates, t_mrs, t_co, camera
 
     for image_coords, object_coords_M_sorted, t_mr in zip(all_image_coordinates, matched_object_coordinates, t_mrs):
         for i in range(len(image_coords)):
-            object_coords_r.append(calibration_common.apply_T(np.linalg.inv(t_mr), np.array([object_coords_M_sorted[i]])))
+            object_coords_r.append(
+                calibration_common.apply_T(np.linalg.inv(t_mr), np.array([object_coords_M_sorted[i]])))
     object_coords_r = np.vstack(object_coords_r)
 
     image_coords = np.vstack(np.vstack(all_image_coordinates))
@@ -211,6 +228,7 @@ def calibrate(all_image_coordinates, all_object_coordinates, t_mrs, t_co, camera
         t_ro = np.dot(calibration_common.tf_to_T(tf_rc), t_co)
         return calibration_common.reprojection_error_vector(t_ro, object_coords_r, image_coords, camera_matrix,
                                                             distortion_coeffs)
+
     res = scipy.optimize.least_squares(f, prior, verbose=0, args=())
     return res.x
 
@@ -220,7 +238,6 @@ def group_list(list_, group_size):
 
 
 def k_fold(data_file, results_file, is_checkerboard, k=5):
-
     data = np.load(data_file)
 
     calibration_object_marker_counts = data['calibration_object_marker_counts']
@@ -270,7 +287,8 @@ def k_fold(data_file, results_file, is_checkerboard, k=5):
         fold_camera_rb_poses = camera_rb_poses[fold_mask]
         fold_image_coordinates = all_image_coordinates[fold_mask]
         fold_object_coordinates = all_object_coordinates[fold_mask]
-        result = calibrate(fold_image_coordinates, fold_object_coordinates, fold_camera_rb_poses, t_co, camera_matrix, distortion_coeffs, verbose=True, is_checkerboard=is_checkerboard)
+        result = calibrate(fold_image_coordinates, fold_object_coordinates, fold_camera_rb_poses, t_co, camera_matrix,
+                           distortion_coeffs, verbose=True, is_checkerboard=is_checkerboard)
 
         print(result)
         t_rcs.append(result)
@@ -342,4 +360,36 @@ if __name__ == "__main__":
     k_fold("../data/all_markers_10_9_18.npz", "../data/marker_calibration_10_9_18.npz", is_checkerboard=False, k=5)
     k_fold("../data/all_boards_10_9_18.npz", "../data/board_calibration_10_9_18.npz", is_checkerboard=True, k=5)
 
+
+@click.command()
+@click.argument("outfile", type=click.File('w'))
+@click.argument("infile", type=click.Path(exists=True), nargs=1)
+@click.option("--is_checkerboard/--is_markers", default=True, help="Specify if the calibration object is a checkerboard or not.")
+@click.option("--k", default=5, help="k for the k-fold cross validation.")
+def cli(outfile, infile, is_checkerboard, k):
+    """
+    \b
+    Calculates the transformation from the camera rigid body to the optical frame for use for k-fold cross validation.
+    The .npz infile must have the following data (obtained from one of the extraction scripts):
+        - camera matrix
+        - distortion coefficients
+        - image coordinates
+        - object coordinates
+        - camera rigid body poses
+        - camera to optical frame transform
+        - camera rigid body marker counts
+        - calibration object marker counts
+        - bag files used
+
+    Outputs the results to a .npz file in the following format:
+        - t_rcs: calibration transforms from rigid body to camera_link.
+        - all_train_bags: the bags each transform was calibrated on.
+        - all_test_bags: the bags each transform should be tested on.
+    """
+
+    k_fold(infile, outfile, is_checkerboard, k)
+
+
+if __name__ == "__main__":
+    cli()
 
