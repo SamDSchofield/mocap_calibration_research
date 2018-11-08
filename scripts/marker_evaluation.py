@@ -4,13 +4,13 @@ from __future__ import print_function, division
 
 import numpy as np
 
+import click
 import cv2
 import scipy
 import scipy.optimize
 import scipy.spatial
 import scipy.stats
 from tf import transformations
-
 
 import calibration_common
 
@@ -108,17 +108,40 @@ def evaluate_k_fold(marker_calibration_file, board_calibration_file, raw_data_fi
         test_cam_rb_poses = cam_rb_poses[test_mask]
 
         if len(test_cam_rb_poses) > 0:
-            error = evaluate(marker_calibration, test_cam_rb_poses, test_image_coords, test_object_coords, t_co, camera_mat, distortion_coeffs)
+            error = evaluate(marker_calibration, test_cam_rb_poses, test_image_coords, test_object_coords, t_co,
+                             camera_mat, distortion_coeffs)
             marker_errors.append(error)
             print(test_bags, error)
 
-            error = evaluate(board_calibration, test_cam_rb_poses, test_image_coords, test_object_coords, t_co, camera_mat, distortion_coeffs)
+            error = evaluate(board_calibration, test_cam_rb_poses, test_image_coords, test_object_coords, t_co,
+                             camera_mat, distortion_coeffs)
             board_errors.append(error)
 
     print("Marker mean {}, std {}".format(np.mean(marker_errors), np.std(marker_errors)))
     print("Board mean {}, std {}".format(np.mean(board_errors), np.std(board_errors)))
 
 
-if __name__ == "__main__":
+def main():
     # evaluate_k_fold("../data/distance_calibration.npz", "../data/board_calibration_10_9_18.npz", "../data/distance.npz")
-    evaluate_k_fold("../data/marker_calibration_10_9_18.npz", "../data/board_calibration_10_9_18.npz", "../data/all_markers_10_9_18.npz")
+    evaluate_k_fold("../data/marker_calibration_10_9_18.npz", "../data/board_calibration_10_9_18.npz",
+                    "../data/all_markers_10_9_18.npz")
+
+
+@click.command()
+@click.argument("marker_calibration_file", type=click.Path(exists=True), nargs=1)
+@click.argument("board_calibration_file", type=click.Path(exists=True), nargs=1)
+@click.argument("raw_data_file", type=click.Path(exists=True), nargs=1)
+def cli(marker_calibration_file, board_calibration_file, raw_data_file):
+    """
+    \b
+    Evaluates the transformations in the given calibration files using mocap markers.
+
+    The marker and board calibration files are the output of the calibrate script.
+    The raw_data_file is the output of the extract_marker_data script.
+    """
+
+    evaluate_k_fold(marker_calibration_file, board_calibration_file, raw_data_file)
+
+
+if __name__ == "__main__":
+    cli()
