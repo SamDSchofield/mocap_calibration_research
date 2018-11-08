@@ -13,7 +13,6 @@ import rospy
 import tf2_ros
 
 import calibration_common
-from calibration_common import list_bag_files
 
 
 DISPLAY = False  # TODO: don't use globals
@@ -179,7 +178,7 @@ def cli(outfile, infiles, directories, display, min_marker_radius, max_marker_ra
         - bag files used
     """
     if directories:
-        infiles = list_bag_files(directories=infiles)
+        infiles = calibration_common.list_bag_files(directories=infiles)
 
     global DISPLAY
     DISPLAY = display
