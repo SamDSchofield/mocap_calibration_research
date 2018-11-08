@@ -17,8 +17,8 @@ from __future__ import division, print_function, absolute_import
 
 import numpy as np
 import random
-import click
 
+import click
 import cv2
 import scipy.optimize
 import scipy.spatial
@@ -364,7 +364,8 @@ def main():
 @click.command()
 @click.argument("outfile", type=click.File('w'))
 @click.argument("infile", type=click.Path(exists=True), nargs=1)
-@click.option("--is_checkerboard/--is_markers", default=True, help="Specify if the calibration object is a checkerboard or not.")
+@click.option("--is_checkerboard/--is_markers", default=True,
+              help="Specify if the calibration object is a checkerboard or not.")
 @click.option("--k", default=5, help="k for the k-fold cross validation.")
 def cli(outfile, infile, is_checkerboard, k):
     """
@@ -392,4 +393,3 @@ def cli(outfile, infile, is_checkerboard, k):
 
 if __name__ == "__main__":
     cli()
-
