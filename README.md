@@ -2,7 +2,8 @@
 This code accompanies the paper "Calibration for Camera-Motion Capture Extrinsics". 
 The purpose is to calculate the transformation between a camera and the mocap rigid body being used to track it.
 Two methods of performing this calibration were implemented. The first uses the motion capture markers directly, as outlined
-in the accompanying paper. The second is our implementation of the calibration process described in \cite{tum}.
+in the accompanying paper. The second is our implementation of the calibration process described [here](https://vision.in.tum.de/data/datasets/rgbd-dataset?key=sturm12iros).
+
 
 ## Quickstart
 This section describes how to reproduce the results from the paper. 
