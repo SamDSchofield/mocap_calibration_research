@@ -34,17 +34,17 @@ from __future__ import print_function, division
 
 import numpy as np
 
+import click
+import cv2
+import cv_bridge
 import rosbag
 import rospy
-
 import tf2_ros
+from tf import transformations
 
 import calibration_common
-import cv_bridge
 
-import cv2
-
-from tf import transformations
+DISPLAY = False  # TODO: don't use globals
 
 
 def transform_markers_to_mocap_frame(checkerboard_rigid_body_poses, all_checkerboard_corners):
@@ -79,17 +79,18 @@ def detect_checkerboard(image, shape, size, threshold=150, max_value=255):
         object_points[:, :2] = (np.mgrid[0:shape[0], 0:shape[1]].T.reshape(-1, 2)) * size
         return corners_refined, object_points
 
-    # image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-    # if corners is not None:
-    #     for corner in corners:
-    #         x, y = corner[0]
-    #         image = cv2.circle(image, (int(x), int(y)), 1, (0, 255, 0))
-    # cv2.imshow("a", image)
-    # cv2.waitKey(1)
+    if DISPLAY:
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        if corners is not None:
+            for corner in corners:
+                x, y = corner[0]
+                image = cv2.circle(image, (int(x), int(y)), 1, (0, 255, 0))
+        cv2.imshow("image", image)
+        cv2.waitKey(1)
     return None, None
 
 
-def extract_data_from_bags(bag_file_paths, output_file):
+def extract_data_from_bags(bag_file_paths, output_file, shape, size, threshold):
     camera_matrix = None
     distortion_coeffs = None
     camera_link_to_optical_frame_tf = None
@@ -105,8 +106,6 @@ def extract_data_from_bags(bag_file_paths, output_file):
     checkerboard_rigid_body_poses = []
 
     bridge = cv_bridge.CvBridge()
-    size = 0.035
-    shape = (8, 5)
 
     for bag_file_path in bag_file_paths:
         print("*" * 80)
@@ -116,8 +115,7 @@ def extract_data_from_bags(bag_file_paths, output_file):
         camera_marker_count = 0
         checkerboard_marker_count = None
         checkerboard_markers = []
-        image_coordinates = None
-        object_coordinates = None
+
         bag = rosbag.Bag(bag_file_path)
         tf_buffer = calibration_common.load_tf_history_from_bag(bag)
 
@@ -130,7 +128,8 @@ def extract_data_from_bags(bag_file_paths, output_file):
                 if None not in [camera_matrix, distortion_coeffs, camera_link_to_optical_frame_tf]:
 
                     image = bridge.imgmsg_to_cv2(message, "mono8")
-                    image_coordinates, object_coordinates = detect_checkerboard(image, shape=shape, size=size)
+                    image_coordinates, object_coordinates = detect_checkerboard(image, shape=shape, size=size,
+                                                                                threshold=threshold)
 
                     camera_rigid_body_pose = None
                     try:
@@ -204,5 +203,36 @@ def main():
     extract_data_from_bags(bag_file_paths, "../data/all_boards_10_9_18.npz")
 
 
+@click.command()
+@click.argument("outfile", type=click.File('w'))
+@click.argument("infiles", type=click.Path(exists=True), nargs=-1)
+@click.option("--directories/--files", default=False, help="Specify a list of directories instead of bag files.")
+@click.option("--display/--dont_display", default=False, help="Specify whether to display the detection image or not.")
+@click.option("--shape", default="8x5", help="The shape of the checkerboard e.g. 5x8.")
+@click.option("--size", default=0.035, help="The size of the checkerboard squares in meters.")
+@click.option("--threshold", default=150, help="The pixel intensity threshold.")
+def cli(outfile, infiles, directories, display, shape, size, threshold):
+    """
+    \b
+    Extracts the following data from the .bag files provided and stores it in a .npz file:
+        - camera matrix
+        - distortion coefficients
+        - image coordinates
+        - object coordinates
+        - camera rigid body poses
+        - camera to optical frame transform
+        - camera rigid body marker counts
+        - calibration object marker counts
+        - bag files used
+    """
+    if directories:
+        infiles = calibration_common.list_bag_files(directories=infiles)
+
+    global DISPLAY
+    DISPLAY = display
+    shape = tuple(int(x) for x in shape.split("x"))
+    extract_data_from_bags(infiles, outfile, shape, size, threshold)
+
+
 if __name__ == "__main__":
-    main()
+    cli()
