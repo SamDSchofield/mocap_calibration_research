@@ -355,7 +355,7 @@ def distance_calibration(data_file, results_file):
     )
 
 
-if __name__ == "__main__":
+def main():
     # distance_calibration("../data/distance.npz", "../data/distance_calibration.npz")
     k_fold("../data/all_markers_10_9_18.npz", "../data/marker_calibration_10_9_18.npz", is_checkerboard=False, k=5)
     k_fold("../data/all_boards_10_9_18.npz", "../data/board_calibration_10_9_18.npz", is_checkerboard=True, k=5)
